@@ -1,0 +1,114 @@
+---
+- name: Deploy EduTracker App on EC2
+  hosts: web
+  become: true
+  vars:
+    app_dir: "/home/ubuntu/app"
+
+  tasks:
+    - name: Update apt repository cache
+      apt:
+        update_cache: yes
+        force_apt_get: yes
+
+    - name: Install system package prerequisites
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3-pip
+        state: present
+
+    - name: Add Docker's official GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker APT repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Install Docker CE & CLI
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker service is running and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add user 'ubuntu' to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Create app deployment directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Create Nginx folder in deployment directory
+      file:
+        path: "{{ app_dir }}/nginx"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copy Nginx configuration file
+      copy:
+        src: ../nginx/nginx.conf
+        dest: "{{ app_dir }}/nginx/nginx.conf"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Copy Docker Compose file
+      copy:
+        src: ../docker-compose.yaml
+        dest: "{{ app_dir }}/docker-compose.yaml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Log in to Docker Hub (if registry credentials are provided)
+      docker_login:
+        username: "{{ docker_hub_user }}"
+        password: "{{ docker_hub_token }}"
+      when: docker_hub_user is defined and docker_hub_token is defined
+      become_user: ubuntu
+
+    - name: Pull latest Docker images
+      command: docker compose pull
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: ubuntu
+
+    - name: Stop any running containers
+      command: docker compose down --remove-orphans
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: ubuntu
+      failed_when: false # Don't fail if no containers are running
+
+    - name: Start all containers in detached mode
+      command: docker compose up -d
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: ubuntu

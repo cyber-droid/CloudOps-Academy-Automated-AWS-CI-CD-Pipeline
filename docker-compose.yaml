@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: devops_edu
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+    image: ${DOCKER_HUB_USER:-local}/edutracker-backend:latest
+    container_name: backend
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://postgres:postgres_pass@postgres:5432/devops_edu
+      PORT: 3000
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: ./frontend
+    image: ${DOCKER_HUB_USER:-local}/edutracker-frontend:latest
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  nginx:
+    build:
+      context: ./nginx
+    image: ${DOCKER_HUB_USER:-local}/edutracker-nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  postgres_data:
